@@ -16,6 +16,8 @@ async function createMontage() {
     // Display images
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        console.log("files: ");
+        console.log(file);
         const reader = new FileReader();
 
         reader.onload = function(event) {
