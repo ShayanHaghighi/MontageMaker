@@ -4,16 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Photo Montage</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <h1>Photo Montage Creator</h1>
     <div class="upload-section">
-        <input type="file" id="fileInput" multiple accept="image/*">
+        <input type="file" id="fileInput" multiple accept="image/*" onchange="handleFiles(this.files)">
         <button onclick="createMontage()">Create Montage</button>
     </div>
     <div id="montageContainer" class="montage-container"></div>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.9.7/dist/ffmpeg.min.js"></script>
     <script src="script.js"></script>
+    <script src="coi-serviceworker.js"></script>
 </body>
 </html>
