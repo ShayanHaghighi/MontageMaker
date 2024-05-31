@@ -1,29 +1,74 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk, CENTER
 from moviepy.editor import ImageSequenceClip, concatenate_videoclips
 from moviepy.video.fx.all import fadein, fadeout
-from PIL import Image
+from PIL import Image, ImageTk
 import numpy as np
+from proglog import ProgressBarLogger
+
+
+class MyBarLogger(ProgressBarLogger):
+
+    def __init__(self,imageToVideoConverter):
+        super().__init__()
+        # self.value = 0
+        self.converter =imageToVideoConverter
+
+    def is_number(self,s):
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+
+
+    def bars_callback(self, bar, attr, value,old_value=None):
+        # Every time the logger progress is updated, this function is called        
+        percentage = (value / self.bars[bar]['total']) * 100
+        # print(bar,attr,percentage)
+        self.converter.progress['value'] = percentage
+        self.converter.master.update_idletasks()
+    
+    def callback(self, **changes):
+        pass
+        # Every time the logger message is updated, this function is called with
+        # the `changes` dictionary of the form `parameter: new value`.
+        # for (parameter, value) in changes.items():
+            # self.value = value
+            
+
+            # print ('Parameter %s is now %s' % (parameter, value))
 
 class ImageToVideoConverter:
     def __init__(self, master):
         self.master = master
         master.title("Image to Video Converter")
 
+        self.logger = MyBarLogger(self)
+
+        self.currentInputPath = '/home/shayan/Pictures/Screenshots'
+        self.currentOutputPath = '/home/shayan/Pictures/Screenshots'
+        self.thumbnailSize = (200,200)
+
         # Center the window on the screen
         window_width = 1000
-        window_height = 1000
+        window_height = 1200
         screen_width = master.winfo_screenwidth()
         screen_height = master.winfo_screenheight()
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
+        master.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        master.configure(bg="#F2F2F2")
+
+        # Title label
         self.title_label = tk.Label(master, text="Image to Video Converter", font=("Helvetica", 20, "bold"), bg="#F2F2F2", fg="#333")
-        self.title_label.grid(row=0, column=0, columnspan=2, pady=(20, 10))
+        self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10))
 
         # Label to show selected images
         self.label = tk.Label(master, text="No images selected", font=("Helvetica", 12), bg="#F2F2F2", fg="#333")
-        self.label.grid(row=1, column=0, columnspan=2, pady=(0, 10))
+        self.label.grid(row=1, column=0, columnspan=3, pady=(0, 10))
 
         # Button to browse individual files
         self.browse_button = tk.Button(master, text="Browse Files", font=("Helvetica", 12), command=self.browse_files, bg="#4CAF50", fg="white", relief=tk.FLAT, bd=0, padx=10, pady=5)
@@ -35,55 +80,81 @@ class ImageToVideoConverter:
 
         # Duration Label
         self.duration_label = tk.Label(master, text="Choose image duration (seconds)", font=("Helvetica", 12), bg="#F2F2F2", fg="#333")
-        self.duration_label.grid(row=3, column=0, columnspan=2, pady=(0, 5))
+        self.duration_label.grid(row=3, column=0, columnspan=3, pady=(0, 5))
 
         # Entry for image duration
-        self.duration_entry = tk.Entry(master, font=("Helvetica", 12), bg="white", fg="#333", relief=tk.FLAT,width=3)
-        self.duration_entry.grid(row=4, column=0, columnspan=2, pady=(0, 10))
+        self.duration_entry = tk.Entry(master, font=("Helvetica", 12), bg="white", fg="#333", relief=tk.FLAT)
+        self.duration_entry.grid(row=4, column=0, columnspan=3, pady=(0, 10))
 
         # Transition Label
         self.transition_label = tk.Label(master, text="Choose transition", font=("Helvetica", 12), bg="#F2F2F2", fg="#333")
-        self.transition_label.grid(row=5, column=0, columnspan=2, pady=(0, 5))
+        self.transition_label.grid(row=5, column=0, columnspan=3, pady=(0, 5))
 
         # Option Menu for transition
         self.transition_var = tk.StringVar(value="None")
         self.transition_menu = tk.OptionMenu(master, self.transition_var, "None", "Fade")
         self.transition_menu.config(font=("Helvetica", 12), bg="white", fg="#333", relief=tk.FLAT)
-        self.transition_menu.grid(row=6, column=0, columnspan=2, pady=(0, 10))
+        self.transition_menu.grid(row=6, column=0, columnspan=3, pady=(0, 10))
 
-        # Frame to contain the listbox and delete button
-        self.image_listbox = tk.Listbox(master, selectmode=tk.MULTIPLE, width=50, height=10)
-        self.image_listbox.grid(row=7, column=0, columnspan=2, pady=10)
+        # Button to decrease image preview size
+        self.browse_button = tk.Button(master, text="-", font=("Helvetica", 12), command=self.decrease_prev_size, fg="white", relief=tk.FLAT, bd=0)
+        self.browse_button.grid(row=7, column=0, padx=0, pady=5)
 
+        # Toggle for image previews
+        self.preview_var = tk.BooleanVar()
+        self.preview_checkbox = tk.Checkbutton(master, text="Show Image Previews", variable=self.preview_var, font=("Helvetica", 12), bg="#F2F2F2", fg="#333", command=self.update_image_listbox)
+        self.preview_checkbox.grid(row=7, column=1, columnspan=3, pady=(0, 10))
+
+        # Button to increase image preview size
+        self.browse_button = tk.Button(master, text="+", font=("Helvetica", 12), command=self.decrease_prev_size, fg="white", relief=tk.FLAT, bd=0)
+        self.browse_button.grid(row=7, column=2, padx=0, pady=5)
+
+        # Scrollable Text widget for image files with previews
+        self.text_frame = tk.Frame(master)
+        self.text_frame.grid(row=8, column=0, columnspan=3, pady=10)
+        self.scrollbar = tk.Scrollbar(self.text_frame, orient=tk.VERTICAL)
+        self.image_text = tk.Text(self.text_frame, width=50, height=10, yscrollcommand=self.scrollbar.set, wrap="none")
+        self.scrollbar.config(command=self.image_text.yview)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.image_text.pack(side=tk.LEFT, fill=tk.BOTH)
+
+        # Delete selected button
         self.delete_button = tk.Button(master, text="Delete Selected", font=("Helvetica", 12), command=self.delete_selected, bg="#F44336", fg="white", relief=tk.FLAT, bd=0, padx=10, pady=5)
-        self.delete_button.grid(row=8, column=0, columnspan=2, pady=5)
+        self.delete_button.grid(row=9, column=0, columnspan=3, pady=5)
+
 
         # Convert button
         self.convert_button = tk.Button(master, text="Convert to Video", font=("Helvetica", 12), command=self.convert_to_video, bg="#FF9800", fg="white", relief=tk.FLAT, bd=0, padx=10, pady=5)
-        self.convert_button.grid(row=9, column=0, columnspan=2, pady=10)
+        self.convert_button.grid(row=10, column=0, columnspan=3, pady=10)
 
-     
-
-        # Protocol for closing the window
-        master.protocol("WM_DELETE_WINDOW", self.on_closing)
+        # Progress bar
+        self.progress = ttk.Progressbar(master, orient=tk.HORIZONTAL, length=500, mode='determinate')
+        self.progress.grid(row=11, column=0, columnspan=3, pady=10)
 
         self.file_paths = []
+        self.photos = {}
+        self.checkbuttons = []
 
         # Define the protocol for closing the window
         master.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+    def decrease_prev_size(self):
+        self.thumbnailSize = (self.thumbnailSize[0]-30,self.thumbnailSize[1]-30)
+        self.update_image_listbox()
+
     def browse_files(self):
-        file_paths = filedialog.askopenfilenames(initialdir="/home/shayan/Pictures/Screenshots", title="Select Images", filetypes=(("Image files", "*.jpg *.jpeg *.png"), ("All files", "*.*")))
+        file_paths = filedialog.askopenfilenames(initialdir=self.currentInputPath, title="Select Images", filetypes=(("Image files", "*.jpg *.jpeg *.png"), ("All files", "*.*")), multiple=True)
+        if len(self.file_paths)>0:
+            self.currentInputPath = os.path.dirname(file_paths[-1])
         if file_paths:
             self.file_paths.extend(file_paths)
             self.update_image_listbox()
             self.label.config(text=f"{len(self.file_paths)} images selected")
 
-    def update_label(self):
-        self.label.config(text=f"{len(self.file_paths)} images selected")
-
     def browse_folder(self):
-        folder_path = filedialog.askdirectory(initialdir="~", title="Select Folder")
+        folder_path = filedialog.askdirectory(initialdir="self.currentInputPath", title="Select Folder")
+        if folder_path:
+            self.currentInputPath = folder_path
         if folder_path:
             for file in os.listdir(folder_path):
                 if file.lower().endswith(('.jpg', '.jpeg', '.png')):
@@ -92,50 +163,40 @@ class ImageToVideoConverter:
             self.label.config(text=f"{len(self.file_paths)} images selected")
 
     def update_image_listbox(self):
-        self.image_listbox.delete(0, tk.END)
-        for file_path in self.file_paths:
-            self.image_listbox.insert(tk.END, file_path)
-        # self.add_delete_buttons()
+        self.image_text.delete(1.0, tk.END)
+        self.photos.clear()
+        self.checkbuttons.clear()
+        for idx, file_path in enumerate(self.file_paths):
+            var = tk.BooleanVar()
+            checkbutton = tk.Checkbutton(self.text_frame, variable=var, bg="#F2F2F2")
+            self.checkbuttons.append((checkbutton, var))
+            self.image_text.window_create(tk.END, window=checkbutton)
+            tag = f"image_{idx}"
+            if self.preview_var.get():
+                try:
+                    image = Image.open(file_path)
+                    image.thumbnail(self.thumbnailSize, Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(image)
+                    self.photos[file_path] = photo
+                    self.image_text.image_create(tk.END, image=photo)
+                    self.image_text.insert(tk.END, f" {os.path.basename(file_path)}\n", tag)
+                except Exception as e:
+                    self.image_text.insert(tk.END, f"{os.path.basename(file_path)}\n", tag)
+            else:
+                self.image_text.insert(tk.END, f"{os.path.basename(file_path)}\n", tag)
 
     def delete_selected(self):
-        selected_indices = self.image_listbox.curselection()
-        selected_files = [self.file_paths[i] for i in selected_indices]
-        for file in selected_files:
-            self.file_paths.remove(file)
+        indices_to_delete = [idx for idx, (_, var) in enumerate(self.checkbuttons) if var.get()]
+        if not indices_to_delete:
+            messagebox.showwarning("Warning", "Please select items to delete.")
+            return
+
+        for idx in reversed(indices_to_delete):
+            del self.file_paths[idx]
+            del self.checkbuttons[idx]
+
         self.update_image_listbox()
         self.label.config(text=f"{len(self.file_paths)} images selected")
-
-    # def add_delete_buttons(self):
-    #     # Remove existing delete buttons
-    #     for button in self.delete_buttons:
-    #         button.destroy()
-    #     self.delete_buttons.clear()
-
-    #     # Add delete buttons for each item in listbox
-    #             # Image Listbox
-    #     # self.image_listbox = tk.Listbox(self.inner_frame, selectmode=tk.SINGLE, width=50, height=10, font=("Helvetica", 12), bg="white", fg="#333", relief=tk.FLAT)
-    #             # Image Listbox
-    #     self.image_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-    #     # Add delete buttons for each item in listbox
-    #     for i in range(self.image_listbox.size()):
-    #         delete_button = tk.Button(self.inner_frame, text="-", font=("Helvetica", 12), command=lambda index=i: self.delete_item(index), bg="#FF5722", fg="white", relief=tk.FLAT, bd=0, height=1)
-    #         delete_button.pack(anchor='w', padx=(0, 5), pady=(0, 5))
-    #         self.delete_buttons.append(delete_button)
-
-    #     # Update the scroll region of the canvas
-    #     self.canvas.update_idletasks()
-    #     self.canvas.config(scrollregion=self.canvas.bbox("all"))
-
-    #     # Update the scroll region of the canvas
-    #     self.canvas.update_idletasks()
-    #     self.canvas.config(scrollregion=self.canvas.bbox("all"))
-
-
-
-    # def delete_item(self, index):
-    #     self.file_paths.pop(index)
-    #     self.update_image_listbox()
 
     def resize_image(self, image_path, target_size):
         image = Image.open(image_path)
@@ -149,48 +210,46 @@ class ImageToVideoConverter:
         new_image.paste(resized_image, (left, top))
 
         return new_image
-    
-    def is_number(self,s):
-        try:
-            float(s)
-            return True
-        except ValueError:
-            return False
-
 
     def convert_to_video(self):
-        
-        if self.duration_entry.get()=="" or not self.is_number(self.duration_entry.get()) or float(self.duration_entry.get())<=0:
-            messagebox.showwarning("Warning", "Duration is not a valid number")
-            return
-
         if not self.file_paths:
             print("No images selected!")
             messagebox.showwarning("Warning", "No images selected!")
             return
 
-        output_file = filedialog.asksaveasfilename(defaultextension=".mp4", filetypes=(("MP4 files", "*.mp4"), ("All files", "*.*")))
+        output_file = filedialog.asksaveasfilename(initialdir=self.currentOutputPath,defaultextension=".mp4", filetypes=(("MP4 files", "*.mp4"), ("All files", "*.*")))
+        
         if output_file:
-            print("Converting images to video...")
+            self.currentOutputPath = os.path.dirname(self.currentOutputPath)
             clips = []
             target_size = (2560, 1440)
-            for file_path in self.file_paths:
+            duration = int(self.duration_entry.get()) if self.duration_entry.get().isdigit() else 5
+            for file_path in (self.file_paths):
                 image = self.resize_image(file_path, target_size)
                 clips.append(np.array(image))
+                self.progress['value'] += (50 / len(self.file_paths))
+                self.master.update_idletasks()
 
             video_clips = []
             for i, img_array in enumerate(clips):
-                img_clip = ImageSequenceClip([img_array], durations=[6])
+                img_clip = ImageSequenceClip([img_array], durations=[duration])
                 if self.transition_var.get() == "Fade" and i > 0:
-                    img_clip = fadein(img_clip, 2)
+                    img_clip = fadein(img_clip, 1)
                 if self.transition_var.get() == "Fade" and i < len(clips) - 1:
-                    img_clip = fadeout(img_clip, 2)
+                    img_clip = fadeout(img_clip, 1)
                 video_clips.append(img_clip)
 
             final_clip = concatenate_videoclips(video_clips, method="compose")
-            final_clip.write_videofile(output_file, codec="libx264",fps=30)
+
+            # Use the progress bar for video file writing
+            # def update_progress_bar(current, total):
+            #         self.progress['value'] = 50 + (50 * current / total)
+            #         self.master.update_idletasks()
+
+            final_clip.write_videofile(output_file, codec="libx264", fps=30, logger=self.logger)
             print("Video saved successfully at:", output_file)
             messagebox.showinfo("Success", "Video saved successfully!")
+            self.progress['value'] = 0
 
     def on_closing(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
