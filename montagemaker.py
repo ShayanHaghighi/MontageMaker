@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, CENTER
-from moviepy.editor import ImageSequenceClip, concatenate_videoclips
+from moviepy.editor import ImageSequenceClip, concatenate_videoclips, AudioFileClip, concatenate_audioclips
 from moviepy.video.fx.all import fadein, fadeout
 from PIL import Image, ImageTk
 import numpy as np
@@ -135,18 +135,6 @@ class ImageToVideoConverter:
         self.transition_menu.config(font=("Helvetica", 12), bg="white", fg="#333", relief=tk.FLAT)
         self.transition_menu.grid(row=4, column=0, columnspan=2, pady=(0, 10))
 
-        # Button to decrease image preview size
-        self.decrease_button = tk.Button(self.preview_frame, text="-", font=("Helvetica", 12), command=self.decrease_prev_size, fg="white", relief=tk.FLAT, bd=0)
-        self.decrease_button.grid(row=0, column=0, padx=5, pady=5)
-
-        self.preview_var = tk.BooleanVar()
-        # Toggle for image previews
-        self.preview_checkbox = tk.Checkbutton(self.preview_frame, text="Show Image Previews", variable=self.preview_var, font=("Helvetica", 12), bg="#F2F2F2", fg="#333", command=self.update_image_listbox)
-        self.preview_checkbox.grid(row=0, column=1, padx=5, pady=(0, 10))
-
-        # Button to increase image preview size
-        self.increase_button = tk.Button(self.preview_frame, text="+", font=("Helvetica", 12), command=self.increase_prev_size, fg="white", relief=tk.FLAT, bd=0)
-        self.increase_button.grid(row=0, column=2, padx=5, pady=5)
 
                 # Scrollable Text widget for image files with previews
         self.text_frame = tk.Frame(master)
@@ -165,31 +153,45 @@ class ImageToVideoConverter:
         self.delete_all_button = tk.Button(self.delete_frame, text="Delete All", font=("Helvetica", 12), command=self.delete_all, bg="#F44336", fg="white", relief=tk.FLAT, bd=0, padx=20, pady=5)
         self.delete_all_button.grid(row=0, column=1, pady=5, padx=5)
 
+        self.browse_audio_button = tk.Button(self.bottom_frame, text="Browse Audio Files", font=("Helvetica", 12), command=self.browse_audio_files, bg="#FF5722", fg="white", relief=tk.FLAT, bd=0, padx=10, pady=5)
+        self.browse_audio_button.grid(row=0, column=0, columnspan=4, pady=5)
+
         # Convert button
         self.convert_button = tk.Button(self.bottom_frame, text="Convert to Video", font=("Helvetica", 12), command=self.convert_to_video, bg="#FF9800", fg="white", relief=tk.FLAT, bd=0, padx=10, pady=5)
-        self.convert_button.grid(row=0, column=0, columnspan=3, pady=10)
+        self.convert_button.grid(row=1, column=0, columnspan=3, pady=10)
 
         self.progress_label = tk.Label(self.bottom_frame, text="", font=("Helvetica", 12), bg="#F2F2F2", fg="#333")
-        self.progress_label.grid(row=1, column=0, columnspan=3, pady=(0, 5))
+        self.progress_label.grid(row=2, column=0, columnspan=3, pady=(0, 5))
 
         # Progress bar
         self.progress = ttk.Progressbar(self.bottom_frame, orient=tk.HORIZONTAL, length=500, mode='determinate')
-        self.progress.grid(row=2, column=0, columnspan=3, pady=10)
+        self.progress.grid(row=3, column=0, columnspan=3, pady=10)
 
         self.file_paths = []
         self.photos = {}
         self.checkbuttons = []
+        self.audio_file_paths = []
 
         # Define the protocol for closing the window
         master.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    def decrease_prev_size(self):
-        self.thumbnailSize = (self.thumbnailSize[0]-30,self.thumbnailSize[1]-30)
-        self.update_image_listbox()
 
-    def increase_prev_size(self):
-        self.thumbnailSize = (self.thumbnailSize[0]+30,self.thumbnailSize[1]+30)
-        self.update_image_listbox()
+    def browse_audio_files(self):
+        audio_file_paths = filedialog.askopenfilenames(initialdir="~", title="Select Audio Files", filetypes=(("Audio files", "*.mp3 *.wav"), ("All files", "*.*")))
+        if audio_file_paths:
+            self.audio_file_paths.extend(audio_file_paths)
+            messagebox.showinfo("Audio Files Selected", f"{len(self.audio_file_paths)} audio files selected.")
+
+    # work in progress
+    # def increase_thumbnail_size(self):
+    #     new_size = (self.thumbnailSize[0] + 20, self.thumbnailSize[1] + 20)
+    #     self.thumbnailSize = new_size
+    #     self.update_image_listbox()
+
+    # def decrease_thumbnail_size(self):
+    #     new_size = (max(20, self.thumbnailSize[0] - 20), max(20, self.thumbnailSize[1] - 20))
+    #     self.thumbnailSize = new_size
+    #     self.update_image_listbox()
 
     def browse_files(self):
         file_paths = filedialog.askopenfilenames(initialdir=self.currentInputPath, title="Select Images", filetypes=(("Image files", "*.jpg *.jpeg *.png"), ("All files", "*.*")), multiple=True)
@@ -211,29 +213,40 @@ class ImageToVideoConverter:
             self.update_image_listbox()
             self.label.config(text=f"{len(self.file_paths)} images selected")
 
+    def update_progress(self,idx,length):
+        self.progress_label.config(text=f"loading images... ({idx+1}/{length})")
+        self.progress['value'] += (100 / length)
+        self.master.update_idletasks()
+
+
     def update_image_listbox(self):
         self.image_text.delete(1.0, tk.END)
         self.photos.clear()
         self.checkbuttons.clear()
+        length = len(self.file_paths)
         for idx, file_path in enumerate(self.file_paths):
+            self.update_progress(idx,length)
             var = tk.BooleanVar()
             checkbutton = tk.Checkbutton(self.text_frame, variable=var, bg="#F2F2F2")
             self.checkbuttons.append((checkbutton, var))
             self.image_text.window_create(tk.END, window=checkbutton)
             tag = f"image_{idx}"
-            if self.preview_var.get():
-                try:
-                    image = Image.open(file_path)
-                    image.thumbnail(self.thumbnailSize, Image.LANCZOS)
-                    photo = ImageTk.PhotoImage(image)
-                    self.photos[file_path] = photo
-                    self.image_text.image_create(tk.END, image=photo)
-                    self.image_text.tag_remove(tag)
-                    self.image_text.insert(tk.END, f" {os.path.basename(file_path)}\n", tag)
-                except Exception as e:
-                    self.image_text.insert(tk.END, f"{os.path.basename(file_path)}\n", tag)
-            else:
+            
+            try:
+                image = Image.open(file_path)
+                image.thumbnail(self.thumbnailSize, Image.LANCZOS)
+                photo = ImageTk.PhotoImage(image)
+                self.photos[file_path] = photo
+                self.image_text.image_create(tk.END, image=photo)
+                self.image_text.tag_remove(tag)
+                self.image_text.insert(tk.END, f" {os.path.basename(file_path)}\n", tag)
+            except Exception as e:
                 self.image_text.insert(tk.END, f"{os.path.basename(file_path)}\n", tag)
+
+        self.progress_label.config(text=f"Done!")
+        self.progress['value'] = 0
+        self.master.update_idletasks()
+           
 
     def delete_selected(self):
         indices_to_delete = [idx for idx, (_, var) in enumerate(self.checkbuttons) if var.get()]
@@ -247,6 +260,7 @@ class ImageToVideoConverter:
 
         self.update_image_listbox()
         self.label.config(text=f"{len(self.file_paths)} images selected")
+
 
     def delete_all(self):
         while len(self.checkbuttons)>0:
@@ -291,7 +305,7 @@ class ImageToVideoConverter:
                 clips.append(np.array(image))
                 self.progress['value'] += (50 / len(self.file_paths))
                 self.master.update_idletasks()
-
+      
             video_clips = []
             for i, img_array in enumerate(clips):
                 self.progress_label.config(text=f"concatenating images... ({i}/{len(clips)})")
@@ -301,11 +315,16 @@ class ImageToVideoConverter:
                     img_clip = fadein(img_clip, 1)
                     img_clip = fadeout(img_clip, 1)
 
-                # if self.transition_var.get() == "Fade" and i < len(clips) - 1:
-                #     img_clip = fadeout(img_clip, 1)
                 video_clips.append(img_clip)
 
             final_clip = concatenate_videoclips(video_clips, method="compose")
+
+            if self.audio_file_paths:
+                audio_clips = [AudioFileClip(audio_file) for audio_file in self.audio_file_paths]
+                final_audio = concatenate_audioclips(audio_clips)
+                final_clip = final_clip.set_audio(final_audio)
+
+
 
             self.progress_label.config(text="writing to disk (may take a while)...")
 
